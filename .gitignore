@@ -1,0 +1,15 @@
+# IntelliJ
+.idea/
+*.iml
+
+# Maven
+target/
+
+# OS
+.DS_Store
+
+# Environment / secrets
+.env
+
+# Local application configuration
+src/main/resources/application-local.properties
