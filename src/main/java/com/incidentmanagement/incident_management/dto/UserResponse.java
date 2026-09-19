@@ -1,41 +1,15 @@
-package com.incidentmanagement.incident_management.entity;
+package com.incidentmanagement.incident_management.dto;
 
-import jakarta.persistence.*;
+import com.incidentmanagement.incident_management.entity.Role;
 
 import java.time.LocalDateTime;
 
-@Entity
-@Table(name = "users")
-public class User {
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+public class UserResponse {
     private Long id;
-
     private String name;
-
-    @Column(unique = true, nullable = false)
     private String email;
-
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
     private Role role;
-
     private LocalDateTime createdAt;
-    @PrePersist
-    protected void onCreate() {
-        createdAt = LocalDateTime.now();
-    }
-
-    @Column(nullable = false)
-    private String password;
-
-    public String getPassword() {
-        return password;
-    }
-
-    public void setPassword(String password) {
-        this.password = password;
-    }
 
     public Long getId() {
         return id;
