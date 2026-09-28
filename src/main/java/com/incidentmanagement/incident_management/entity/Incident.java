@@ -1,5 +1,6 @@
 package com.incidentmanagement.incident_management.entity;
 
+import com.incidentmanagement.incident_management.exception.InvalidIncidentTransitionException;
 import jakarta.persistence.*;
 
 import java.time.LocalDateTime;
@@ -55,6 +56,21 @@ public class Incident {
     @PreUpdate
     protected void onUpdate(){
         updatedAt = LocalDateTime.now();
+    }
+
+    public void transitionTo(IncidentStatus newStatus){
+        if (newStatus == null) {
+            throw new IllegalArgumentException("New status cannot be null");
+        }
+        if((status == IncidentStatus.OPEN && newStatus == IncidentStatus.IN_PROGRESS) || (status == IncidentStatus.IN_PROGRESS && newStatus == IncidentStatus.RESOLVED) || (status == IncidentStatus.RESOLVED && newStatus == IncidentStatus.CLOSED)){
+            status = newStatus;
+            if(newStatus == IncidentStatus.RESOLVED){
+                resolvedAt = LocalDateTime.now();
+            }
+        }
+        else{
+            throw new InvalidIncidentTransitionException("Cannot transition incident from " + status + " to " + newStatus);
+        }
     }
 
     public Long getId() {
