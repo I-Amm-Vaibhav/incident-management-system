@@ -11,6 +11,15 @@ public class IncidentResponse {
     private IncidentStatus status;
     private Long serviceId;
     private UserResponse reportedBy;
+    private UserResponse assignedTo;
+
+    public UserResponse getAssignedTo() {
+        return assignedTo;
+    }
+
+    public void setAssignedTo(UserResponse assignedTo) {
+        this.assignedTo = assignedTo;
+    }
 
     public Long getId() {
         return id;

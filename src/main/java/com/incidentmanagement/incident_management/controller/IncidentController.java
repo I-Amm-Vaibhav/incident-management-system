@@ -1,11 +1,14 @@
 package com.incidentmanagement.incident_management.controller;
 
+import com.incidentmanagement.incident_management.dto.AssignIncidentRequest;
 import com.incidentmanagement.incident_management.dto.CreateIncidentRequest;
 import com.incidentmanagement.incident_management.dto.IncidentResponse;
 import com.incidentmanagement.incident_management.dto.UpdateIncidentStatusRequest;
 import com.incidentmanagement.incident_management.entity.Incident;
 import com.incidentmanagement.incident_management.service.IncidentService;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/incidents")
@@ -32,5 +35,15 @@ public class IncidentController {
             @RequestBody UpdateIncidentStatusRequest request
     ) {
         return incidentService.updateStatus(id, request.getStatus());
+    }
+
+    @GetMapping("/unassigned")
+    public List<IncidentResponse> getUnassignedIncidents(){
+        return incidentService.getUnassignedIncidents();
+    }
+
+    @PatchMapping("/{id}/assignment")
+    public IncidentResponse assignIncident(@PathVariable Long id, @RequestBody AssignIncidentRequest request){
+        return incidentService.assignIncident(id, request.getEngineerId());
     }
 }
