@@ -5,6 +5,8 @@ import com.incidentmanagement.incident_management.dto.IncidentResponse;
 import com.incidentmanagement.incident_management.dto.UserResponse;
 import com.incidentmanagement.incident_management.entity.*;
 import com.incidentmanagement.incident_management.exception.IncidentNotFoundException;
+import com.incidentmanagement.incident_management.exception.InvalidAssignmentException;
+import com.incidentmanagement.incident_management.exception.ResourceNotFoundException;
 import com.incidentmanagement.incident_management.exception.ServiceNotFoundException;
 import com.incidentmanagement.incident_management.repository.IncidentRepository;
 import com.incidentmanagement.incident_management.repository.ServiceRepository;
@@ -14,6 +16,8 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
+
+import java.util.List;
 
 @org.springframework.stereotype.Service
 public class IncidentService {
@@ -124,7 +128,6 @@ public class IncidentService {
     }
 
     private IncidentResponse mapToResponse(Incident incident) {
-
         IncidentResponse response = new IncidentResponse();
 
         response.setId(incident.getId());
@@ -134,15 +137,52 @@ public class IncidentService {
         response.setStatus(incident.getStatus());
         response.setServiceId(incident.getService().getId());
 
-        UserResponse userResponse = new UserResponse();
-        userResponse.setId(incident.getReportedBy().getId());
-        userResponse.setName(incident.getReportedBy().getName());
-        userResponse.setEmail(incident.getReportedBy().getEmail());
-        userResponse.setRole(incident.getReportedBy().getRole());
-        userResponse.setCreatedAt(incident.getReportedBy().getCreatedAt());
+        UserResponse reportedBy = new UserResponse();
+        reportedBy.setId(incident.getReportedBy().getId());
+        reportedBy.setName(incident.getReportedBy().getName());
+        reportedBy.setEmail(incident.getReportedBy().getEmail());
+        reportedBy.setRole(incident.getReportedBy().getRole());
+        reportedBy.setCreatedAt(incident.getReportedBy().getCreatedAt());
 
-        response.setReportedBy(userResponse);
+        response.setReportedBy(reportedBy);
+
+        if (incident.getAssignedTo() != null) {
+            UserResponse assignedTo = new UserResponse();
+            assignedTo.setId(incident.getAssignedTo().getId());
+            assignedTo.setName(incident.getAssignedTo().getName());
+            assignedTo.setEmail(incident.getAssignedTo().getEmail());
+            assignedTo.setRole(incident.getAssignedTo().getRole());
+            assignedTo.setCreatedAt(incident.getAssignedTo().getCreatedAt());
+
+            response.setAssignedTo(assignedTo);
+        }
 
         return response;
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    public List<IncidentResponse> getUnassignedIncidents(){
+        return incidentRepository.findByAssignedToIsNull()
+                .stream()
+                .map(this::mapToResponse)
+                .toList();
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    public IncidentResponse assignIncident(Long incidentId, Long engineerId){
+        Incident incident = incidentRepository.findById(incidentId)
+                .orElseThrow(() -> new IncidentNotFoundException("Incident not found with incident id: " + incidentId));
+
+        User engineer = userRepository.findById(engineerId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + engineerId));
+
+        if(engineer.getRole() != Role.ENGINEER){
+            throw new InvalidAssignmentException("User is not a engineer");
+        }
+
+        incident.setAssignedTo(engineer);
+        Incident savedIncident = incidentRepository.save(incident);
+
+        return mapToResponse(savedIncident);
     }
 }
