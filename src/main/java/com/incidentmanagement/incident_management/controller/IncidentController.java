@@ -1,9 +1,6 @@
 package com.incidentmanagement.incident_management.controller;
 
-import com.incidentmanagement.incident_management.dto.AssignIncidentRequest;
-import com.incidentmanagement.incident_management.dto.CreateIncidentRequest;
-import com.incidentmanagement.incident_management.dto.IncidentResponse;
-import com.incidentmanagement.incident_management.dto.UpdateIncidentStatusRequest;
+import com.incidentmanagement.incident_management.dto.*;
 import com.incidentmanagement.incident_management.entity.Incident;
 import com.incidentmanagement.incident_management.service.IncidentService;
 import org.springframework.web.bind.annotation.*;
@@ -45,5 +42,18 @@ public class IncidentController {
     @PatchMapping("/{id}/assignment")
     public IncidentResponse assignIncident(@PathVariable Long id, @RequestBody AssignIncidentRequest request){
         return incidentService.assignIncident(id, request.getEngineerId());
+    }
+
+    @PostMapping("/{id}/comments")
+    public CommentResponse createComment(
+            @PathVariable Long id,
+            @RequestBody CreateCommentRequest request) {
+
+        return incidentService.createComment(request, id);
+    }
+
+    @GetMapping("/{id}/comments")
+    public List<CommentResponse> getComments(@PathVariable Long id) {
+        return incidentService.getComments(id);
     }
 }
