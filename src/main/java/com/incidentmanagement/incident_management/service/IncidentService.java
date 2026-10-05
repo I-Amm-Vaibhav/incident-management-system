@@ -1,13 +1,12 @@
 package com.incidentmanagement.incident_management.service;
 
-import com.incidentmanagement.incident_management.dto.CreateIncidentRequest;
-import com.incidentmanagement.incident_management.dto.IncidentResponse;
-import com.incidentmanagement.incident_management.dto.UserResponse;
+import com.incidentmanagement.incident_management.dto.*;
 import com.incidentmanagement.incident_management.entity.*;
 import com.incidentmanagement.incident_management.exception.IncidentNotFoundException;
 import com.incidentmanagement.incident_management.exception.InvalidAssignmentException;
 import com.incidentmanagement.incident_management.exception.ResourceNotFoundException;
 import com.incidentmanagement.incident_management.exception.ServiceNotFoundException;
+import com.incidentmanagement.incident_management.repository.IncidentCommentRepository;
 import com.incidentmanagement.incident_management.repository.IncidentRepository;
 import com.incidentmanagement.incident_management.repository.ServiceRepository;
 import com.incidentmanagement.incident_management.repository.UserRepository;
@@ -17,6 +16,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @org.springframework.stereotype.Service
@@ -24,11 +24,13 @@ public class IncidentService {
     private final IncidentRepository incidentRepository;
     private final ServiceRepository serviceRepository;
     private final UserRepository userRepository;
+    private final IncidentCommentRepository incidentCommentRepository;
 
-    public IncidentService(IncidentRepository incidentRepository, ServiceRepository serviceRepository, UserRepository userRepository){
+    public IncidentService(IncidentRepository incidentRepository, ServiceRepository serviceRepository, UserRepository userRepository, IncidentCommentRepository incidentCommentRepository){
         this.incidentRepository = incidentRepository;
         this.serviceRepository = serviceRepository;
         this.userRepository = userRepository;
+        this.incidentCommentRepository = incidentCommentRepository;
     }
 
     public IncidentResponse getIncidentById(Long id){
@@ -160,6 +162,26 @@ public class IncidentService {
         return response;
     }
 
+    private CommentResponse mapToResponse(IncidentComment comment) {
+        CommentResponse response = new CommentResponse();
+
+        response.setId(comment.getId());
+        response.setComment(comment.getComment());
+        response.setIncidentId(comment.getIncident().getId());
+
+        UserResponse userResponse = new UserResponse();
+        userResponse.setId(comment.getUser().getId());
+        userResponse.setName(comment.getUser().getName());
+        userResponse.setEmail(comment.getUser().getEmail());
+        userResponse.setRole(comment.getUser().getRole());
+        userResponse.setCreatedAt(comment.getUser().getCreatedAt());
+
+        response.setUser(userResponse);
+        response.setCreatedAt(comment.getCreatedAt());
+
+        return response;
+    }
+
     @PreAuthorize("hasRole('ADMIN')")
     public List<IncidentResponse> getUnassignedIncidents(){
         return incidentRepository.findByAssignedToIsNull()
@@ -184,5 +206,73 @@ public class IncidentService {
         Incident savedIncident = incidentRepository.save(incident);
 
         return mapToResponse(savedIncident);
+    }
+
+    public CommentResponse createComment(
+            CreateCommentRequest request,
+            Long id) {
+
+        Authentication authentication =
+                SecurityContextHolder.getContext().getAuthentication();
+
+        String email = authentication.getName();
+
+        User currentUser = userRepository.findByEmail(email)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                "User not found with email " + email));
+
+        Incident incident = incidentRepository.findById(id)
+                .orElseThrow(() ->
+                        new IncidentNotFoundException(
+                                "Incident not found with incident id: " + id));
+
+        validateCommentAccess(incident, currentUser);
+
+        IncidentComment comment = new IncidentComment();
+
+        comment.setComment(request.getComment());
+        comment.setIncident(incident);
+        comment.setUser(currentUser);
+
+        IncidentComment savedComment =
+                incidentCommentRepository.save(comment);
+
+        return mapToResponse(savedComment);
+    }
+
+    private void validateCommentAccess(Incident incident, User currentUser) {
+
+        if (currentUser.getRole() == Role.ADMIN) {
+            return;
+        }
+
+        if (currentUser.getRole() == Role.ENGINEER
+                && incident.getAssignedTo() != null
+                && incident.getAssignedTo().getId().equals(currentUser.getId())) {
+            return;
+        }
+
+        if (currentUser.getRole() == Role.REPORTER
+                && incident.getReportedBy().getId().equals(currentUser.getId())) {
+            return;
+        }
+
+        throw new AccessDeniedException(
+                "You do not have permission to comment on this incident");
+    }
+
+    public List<CommentResponse> getComments(Long incidentId) {
+
+        incidentRepository.findById(incidentId)
+                .orElseThrow(() ->
+                        new IncidentNotFoundException(
+                                "Incident not found with incident id: " + incidentId));
+
+        return incidentCommentRepository
+                .findByIncidentIdOrderByCreatedAtAsc(incidentId)
+                .stream()
+                .map(this::mapToResponse)
+                .toList();
     }
 }
