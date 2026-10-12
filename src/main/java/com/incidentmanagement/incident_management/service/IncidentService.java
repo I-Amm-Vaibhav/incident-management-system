@@ -6,10 +6,8 @@ import com.incidentmanagement.incident_management.exception.IncidentNotFoundExce
 import com.incidentmanagement.incident_management.exception.InvalidAssignmentException;
 import com.incidentmanagement.incident_management.exception.ResourceNotFoundException;
 import com.incidentmanagement.incident_management.exception.ServiceNotFoundException;
-import com.incidentmanagement.incident_management.repository.IncidentCommentRepository;
-import com.incidentmanagement.incident_management.repository.IncidentRepository;
-import com.incidentmanagement.incident_management.repository.ServiceRepository;
-import com.incidentmanagement.incident_management.repository.UserRepository;
+import com.incidentmanagement.incident_management.repository.*;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -25,12 +23,14 @@ public class IncidentService {
     private final ServiceRepository serviceRepository;
     private final UserRepository userRepository;
     private final IncidentCommentRepository incidentCommentRepository;
+    private final IncidentHistoryRepository incidentHistoryRepository;
 
-    public IncidentService(IncidentRepository incidentRepository, ServiceRepository serviceRepository, UserRepository userRepository, IncidentCommentRepository incidentCommentRepository){
+    public IncidentService(IncidentRepository incidentRepository, ServiceRepository serviceRepository, UserRepository userRepository, IncidentCommentRepository incidentCommentRepository, IncidentHistoryRepository incidentHistoryRepository){
         this.incidentRepository = incidentRepository;
         this.serviceRepository = serviceRepository;
         this.userRepository = userRepository;
         this.incidentCommentRepository = incidentCommentRepository;
+        this.incidentHistoryRepository = incidentHistoryRepository;
     }
 
     public IncidentResponse getIncidentById(Long id){
@@ -56,6 +56,7 @@ public class IncidentService {
         return response;
     }
 
+    @Transactional
     public IncidentResponse createIncident(CreateIncidentRequest request){
         Service service = serviceRepository.findById(request.getServiceId())
                 .orElseThrow(() -> new ServiceNotFoundException("Service not found with id: " +request.getServiceId()));
@@ -74,6 +75,13 @@ public class IncidentService {
         incident.setReportedBy(user);
 
         Incident savedIncident = incidentRepository.save(incident);
+        createHistory(
+                savedIncident,
+                user,
+                "incident",
+                null,
+                "created"
+        );
         IncidentResponse response = new IncidentResponse();
         response.setId(savedIncident.getId());
         response.setTitle(savedIncident.getTitle());
@@ -94,6 +102,7 @@ public class IncidentService {
     }
 
     @PreAuthorize("hasAnyRole('ENGINEER', 'ADMIN')")
+    @Transactional
     public IncidentResponse updateStatus(Long incidentId, IncidentStatus newStatus) {
 
         Incident incident = incidentRepository.findById(incidentId)
@@ -122,9 +131,17 @@ public class IncidentService {
             }
         }
 
+        IncidentStatus oldStatus = incident.getStatus();
         incident.transitionTo(newStatus);
 
         Incident savedIncident = incidentRepository.save(incident);
+        createHistory(
+                savedIncident,
+                currentUser,
+                "status",
+                oldStatus.name(),
+                savedIncident.getStatus().name()
+        );
 
         return mapToResponse(savedIncident);
     }
@@ -191,6 +208,7 @@ public class IncidentService {
     }
 
     @PreAuthorize("hasRole('ADMIN')")
+    @Transactional
     public IncidentResponse assignIncident(Long incidentId, Long engineerId){
         Incident incident = incidentRepository.findById(incidentId)
                 .orElseThrow(() -> new IncidentNotFoundException("Incident not found with incident id: " + incidentId));
@@ -202,12 +220,27 @@ public class IncidentService {
             throw new InvalidAssignmentException("User is not a engineer");
         }
 
+        User oldAssignee = incident.getAssignedTo();
         incident.setAssignedTo(engineer);
         Incident savedIncident = incidentRepository.save(incident);
+
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        String email = authentication.getName();
+        User currentUser = userRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        createHistory(
+                savedIncident,
+                currentUser,
+                "assignedTo",
+                oldAssignee != null ? oldAssignee.getEmail() : null,
+                engineer.getEmail()
+        );
 
         return mapToResponse(savedIncident);
     }
 
+    @Transactional
     public CommentResponse createComment(
             CreateCommentRequest request,
             Long id) {
@@ -237,6 +270,13 @@ public class IncidentService {
 
         IncidentComment savedComment =
                 incidentCommentRepository.save(comment);
+        createHistory(
+                savedComment.getIncident(),
+                currentUser,
+                "comment",
+                null,
+                "added"
+        );
 
         return mapToResponse(savedComment);
     }
@@ -275,4 +315,54 @@ public class IncidentService {
                 .map(this::mapToResponse)
                 .toList();
     }
+
+
+    private void createHistory(
+            Incident incident,
+            User changedBy,
+            String fieldName,
+            String oldValue,
+            String newValue) {
+
+        IncidentHistory history = new IncidentHistory();
+        history.setIncident(incident);
+        history.setChangedBy(changedBy);
+        history.setFieldName(fieldName);
+        history.setOldValue(oldValue);
+        history.setNewValue(newValue);
+
+        incidentHistoryRepository.save(history);
+    }
+
+
+    private IncidentHistoryResponse mapToResponse(IncidentHistory history) {
+        IncidentHistoryResponse response = new IncidentHistoryResponse();
+
+        response.setId(history.getId());
+        response.setIncidentId(history.getIncident().getId());
+        response.setFieldName(history.getFieldName());
+        response.setOldValue(history.getOldValue());
+        response.setNewValue(history.getNewValue());
+        response.setChangedBy(history.getChangedBy().getEmail());
+        response.setChangedAt(history.getChangedAt());
+
+        return response;
+    }
+
+
+    @Transactional(readOnly = true)
+    public List<IncidentHistoryResponse> getIncidentHistory(Long incidentId) {
+        incidentRepository.findById(incidentId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Incident not found with id: " + incidentId));
+
+        return incidentHistoryRepository
+                .findByIncidentIdOrderByChangedAtAscIdAsc(incidentId)
+                .stream()
+                .map(this::mapToResponse)
+                .toList();
+    }
+
+
+
 }

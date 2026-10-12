@@ -56,4 +56,9 @@ public class IncidentController {
     public List<CommentResponse> getComments(@PathVariable Long id) {
         return incidentService.getComments(id);
     }
+
+    @GetMapping("/{id}/history")
+    public List<IncidentHistoryResponse> getIncidentHistory(@PathVariable Long id) {
+        return incidentService.getIncidentHistory(id);
+    }
 }
