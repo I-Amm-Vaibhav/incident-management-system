@@ -17,6 +17,8 @@ public class UserController {
         this.userService = userService;
     }
 
+    // If new user gives creds then create new account, or else should be able to login and verify password if username already exists
+    // Also change the request dto to not accept role, by default everyone should be reporter, only admin can change the role based on user name
     @PostMapping
     public UserResponse createUser(@RequestBody CreateUserRequest request){
         return userService.createUser(request);
